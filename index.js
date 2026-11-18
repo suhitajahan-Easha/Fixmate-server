@@ -282,7 +282,136 @@ app.delete("/services/:id", async (req, res) => {
   }
 });
 
+///admin seeing all user api and edit api
+app.get("/users", async (req, res) => {
+  try {
+    const result = await user
+      .find(
+        {},
+        {
+          projection: {
+            name: 1,
+            email: 1,
+            image: 1,
+            role: 1,
+            createdAt: 1,
+          },
+        }
+      )
+      .sort({ createdAt: -1 })
+      .toArray();
 
+    res.status(200).send({
+      success: true,
+      message: "Users fetched successfully",
+      result,
+    });
+  } catch (error) {
+    console.error("Get users error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch users",
+    });
+  }
+});
+
+//api for making other admin
+
+app.patch("/users/:id/role", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId, role } = req.body;
+
+    // Check required data
+    if (!userId || !role) {
+      return res.status(400).send({
+        success: false,
+        message: "User ID and role are required",
+      });
+    }
+
+    // Check valid role
+    const allowedRoles = ["customer", "technician", "admin"];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    // Check valid MongoDB IDs
+    if (!ObjectId.isValid(userId) || !ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
+    // Find the logged-in user in the database
+    const adminUser = await user.findOne({
+      _id: new ObjectId(userId),
+    });
+
+    if (!adminUser) {
+      return res.status(404).send({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check admin role
+    if (adminUser.role !== "admin") {
+      return res.status(403).send({
+        success: false,
+        message: "Only admins can change user roles",
+      });
+    }
+
+    // Prevent admin from changing their own role
+    if (adminUser._id.toString() === id) {
+      return res.status(403).send({
+        success: false,
+        message: "You cannot change your own role",
+      });
+    }
+
+    // Find the target user
+    const targetUser = await user.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!targetUser) {
+      return res.status(404).send({
+        success: false,
+        message: "Target user not found",
+      });
+    }
+
+    // Update target user's role
+    await user.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          role: role,
+        },
+      }
+    );
+
+    res.status(200).send({
+      success: true,
+      message: "User role updated successfully",
+    });
+  } catch (error) {
+    console.error("Update user role error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to update user role",
+    });
+  }
+});
 
 
 app.get("/", (req, res) => {
