@@ -63,9 +63,64 @@ app.post("/services", async (req, res) => {
   }
 });
 //getting all servicess api
+// app.get("/services", async (req, res) => {
+//   try {
+//     const { id } = req.query;
+
+//     let query = {};
+
+//     if (id) {
+//       // Find user by ID
+//       const users = await user.findOne({
+//         _id: new ObjectId(id),
+//       });
+//       console.log("Received ID:", id);
+//       console.log("Found user:", users);
+
+//       if (!users) {
+//         return res.status(404).send({
+//           success: false,
+//           message: "User not found",
+//         });
+//       }
+
+//       // Search services according to user role
+//       if (users.role === "technician") {
+//         // query = { technicianId: id };
+//         query = {
+//           $or: [{ technicianId: id }, { technicianEmail: users.email }],
+//         };
+//       } else if (users.role === "admin") {
+//         query = {};
+//       } else {
+//         query = { approvalStatus: "approved", isAvailable: true };
+//       }
+//     } else {
+//       // Public users can see approved services
+//       query = { approvalStatus: "approved", isAvailable: true };
+//     }
+
+//     const result = await services.find(query).sort({ createdAt: -1 }).
+//     limit(req.query.limit ? Number(req.query.limit) : 0).toArray();
+
+//     res.status(200).send({
+//       success: true,
+//       message: "Services fetched successfully",
+//       result,
+//     });
+//   } catch (error) {
+//     console.error("Get services error:", error);
+
+//     res.status(500).send({
+//       success: false,
+//       message: "Failed to fetch services",
+//     });
+//   }
+// });
+
 app.get("/services", async (req, res) => {
   try {
-    const { id } = req.query;
+    const { id, category, limit } = req.query;
 
     let query = {};
 
@@ -74,6 +129,7 @@ app.get("/services", async (req, res) => {
       const users = await user.findOne({
         _id: new ObjectId(id),
       });
+
       console.log("Received ID:", id);
       console.log("Found user:", users);
 
@@ -86,21 +142,44 @@ app.get("/services", async (req, res) => {
 
       // Search services according to user role
       if (users.role === "technician") {
-        // query = { technicianId: id };
         query = {
           $or: [{ technicianId: id }, { technicianEmail: users.email }],
         };
       } else if (users.role === "admin") {
         query = {};
       } else {
-        query = { approvalStatus: "approved", isAvailable: true };
+        query = {
+          approvalStatus: "approved",
+          isAvailable: true,
+        };
       }
     } else {
       // Public users can see approved services
-      query = { approvalStatus: "approved", isAvailable: true };
+      query = {
+        approvalStatus: "approved",
+        isAvailable: true,
+      };
     }
 
-    const result = await services.find(query).sort({ createdAt: -1 }).toArray();
+    // Apply category filter only for public/customer queries
+    if (
+      !id ||
+      (id &&
+        (await user.findOne({ _id: new ObjectId(id) }))?.role === "customer")
+    ) {
+      if (category) {
+        query.category = category;
+      }
+    }
+
+    // Get services
+    let servicesQuery = services.find(query).sort({ createdAt: -1 });
+
+    if (limit && Number(limit) > 0) {
+      servicesQuery = servicesQuery.limit(Number(limit));
+    }
+
+    const result = await servicesQuery.toArray();
 
     res.status(200).send({
       success: true,
@@ -116,7 +195,8 @@ app.get("/services", async (req, res) => {
     });
   }
 });
-//service detail page public 
+
+//service detail page public
 app.get("/services/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -151,7 +231,7 @@ app.get("/services/:id", async (req, res) => {
           area: 1,
           bio: 1,
         },
-      }
+      },
     );
 
     res.status(200).send({
@@ -275,7 +355,6 @@ app.patch("/services/:id", async (req, res) => {
     });
   }
 });
-
 
 //deleting service by technician
 
@@ -474,7 +553,6 @@ app.patch("/users/:id/role", async (req, res) => {
   }
 });
 
-
 // Create a repair booking
 app.post("/bookings", async (req, res) => {
   try {
@@ -523,10 +601,7 @@ app.post("/bookings", async (req, res) => {
       timeZone: "Asia/Dhaka",
     });
 
-    if (
-      isNaN(new Date(preferredDate).getTime()) ||
-      preferredDate < today
-    ) {
+    if (isNaN(new Date(preferredDate).getTime()) || preferredDate < today) {
       return res.status(400).send({
         success: false,
         message: "Please select today or a future date",
@@ -683,10 +758,7 @@ app.get("/bookings", async (req, res) => {
     }
 
     // Get bookings
-    const result = await bookings
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    const result = await bookings.find(query).sort({ createdAt: -1 }).toArray();
 
     res.status(200).send({
       success: true,
@@ -703,7 +775,7 @@ app.get("/bookings", async (req, res) => {
   }
 });
 
-//booking edit api technician and customer 
+//booking edit api technician and customer
 
 // PATCH: Update booking status (Customer and Technician)
 app.patch("/bookings/:id/status", async (req, res) => {
@@ -865,7 +937,7 @@ app.patch("/bookings/:id/status", async (req, res) => {
       },
       {
         $set: updateFields,
-      }
+      },
     );
 
     if (result.matchedCount === 0) {
@@ -888,7 +960,6 @@ app.patch("/bookings/:id/status", async (req, res) => {
     });
   }
 });
-
 
 ///payment api
 
@@ -1134,10 +1205,22 @@ app.post("/payments/verify", async (req, res) => {
       },
       {
         $set: { paymentStatus: "paid" },
-      }
+      },
     );
 
     if (updateResult.modifiedCount === 0) {
+      const savedPayment = await payments.findOne({
+        stripeSessionId: session.id,
+      });
+
+      if (savedPayment) {
+        return res.status(200).send({
+          success: true,
+          message: "Payment already verified",
+          payment: savedPayment,
+        });
+      }
+
       return res.status(400).send({
         success: false,
         message: "Booking is already paid or cannot be paid",
@@ -1155,7 +1238,7 @@ app.post("/payments/verify", async (req, res) => {
         },
         {
           $set: { paymentStatus: "unpaid" },
-        }
+        },
       );
 
       throw error;
