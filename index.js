@@ -2,6 +2,9 @@ import express from "express";
 import { MongoClient, ObjectId } from "mongodb";
 import "dotenv/config";
 import cors from "cors";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = 5000;
@@ -24,6 +27,9 @@ const db = mongoclient.db("Assignment-9ph");
 const user = db.collection("user");
 const services = db.collection("services");
 const bookings = db.collection("bookings");
+const payments = db.collection("payments");
+
+await payments.createIndex({ stripeSessionId: 1 }, { unique: true });
 
 //service related api
 // app.post("/services", async (req, res) => {
@@ -883,6 +889,293 @@ app.patch("/bookings/:id/status", async (req, res) => {
   }
 });
 
+
+///payment api
+
+app.post("/payments/create-checkout-session", async (req, res) => {
+  try {
+    const { bookingId, customerEmail } = req.body;
+
+    // 1. Validate required fields
+    if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "Valid booking ID and customer email are required",
+      });
+    }
+
+    // 2. Find booking
+    const booking = await bookings.findOne({
+      _id: new ObjectId(bookingId),
+    });
+
+    if (!booking) {
+      return res.status(404).send({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // 3. Check booking ownership
+    if (booking.customerEmail !== customerEmail) {
+      return res.status(403).send({
+        success: false,
+        message: "You cannot pay for another customer's booking",
+      });
+    }
+
+    // 4. Only completed bookings can be paid
+    if (booking.status !== "completed") {
+      return res.status(400).send({
+        success: false,
+        message: "Only completed bookings can be paid",
+      });
+    }
+
+    // 5. Check payment status
+    if (booking.paymentStatus !== "unpaid") {
+      return res.status(400).send({
+        success: false,
+        message: "This booking is already paid",
+      });
+    }
+
+    // 6. Validate final amount
+    if (
+      typeof booking.finalAmount !== "number" ||
+      !Number.isFinite(booking.finalAmount) ||
+      booking.finalAmount <= 0
+    ) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid booking amount",
+      });
+    }
+
+    // 7. Check whether a payment already exists
+    const existingPayment = await payments.findOne({
+      bookingId: booking._id.toString(),
+      paymentStatus: "paid",
+    });
+
+    if (existingPayment) {
+      return res.status(400).send({
+        success: false,
+        message: "This booking has already been paid",
+      });
+    }
+
+    // 8. Create Stripe Checkout Session
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: booking.serviceTitle,
+            },
+            unit_amount: Math.round(booking.finalAmount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+
+      customer_email: booking.customerEmail,
+
+      metadata: {
+        bookingId: booking._id.toString(),
+        customerEmail: booking.customerEmail,
+      },
+
+      success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+
+      cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+    });
+
+    // 9. Return Checkout URL
+    res.status(200).send({
+      success: true,
+      message: "Checkout session created successfully",
+      url: session.url,
+    });
+  } catch (error) {
+    console.error("Create checkout session error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to create checkout session",
+    });
+  }
+});
+
+app.post("/payments/verify", async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+
+    // 1. Validate session ID
+    if (!sessionId) {
+      return res.status(400).send({
+        success: false,
+        message: "Stripe session ID is required",
+      });
+    }
+
+    // 2. Retrieve Stripe Checkout Session
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    // 3. Check payment status
+    if (session.payment_status !== "paid") {
+      return res.status(400).send({
+        success: false,
+        message: "Payment has not been completed",
+      });
+    }
+
+    // 4. Get booking information from Stripe metadata
+    const { bookingId, customerEmail } = session.metadata || {};
+
+    if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid payment metadata",
+      });
+    }
+
+    // 5. Find booking
+    const booking = await bookings.findOne({
+      _id: new ObjectId(bookingId),
+    });
+
+    if (!booking) {
+      return res.status(404).send({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    // 6. Verify customer and amount
+    if (
+      booking.customerEmail !== customerEmail ||
+      session.customer_email !== customerEmail ||
+      session.amount_total !== Math.round(booking.finalAmount * 100)
+    ) {
+      return res.status(400).send({
+        success: false,
+        message: "Payment information does not match booking",
+      });
+    }
+
+    // 7. Check booking status
+    if (booking.status !== "completed") {
+      return res.status(400).send({
+        success: false,
+        message: "Booking is not completed",
+      });
+    }
+
+    // 8. Check if this session was already saved
+    const existingPayment = await payments.findOne({
+      stripeSessionId: session.id,
+    });
+
+    if (existingPayment) {
+      return res.status(200).send({
+        success: true,
+        message: "Payment already verified",
+        payment: existingPayment,
+      });
+    }
+
+    // 9. Check if booking was already paid
+    if (booking.paymentStatus === "paid") {
+      return res.status(400).send({
+        success: false,
+        message: "This booking has already been paid",
+      });
+    }
+
+    // 10. Get Stripe transaction ID
+    const transactionId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    if (!transactionId) {
+      return res.status(400).send({
+        success: false,
+        message: "Stripe transaction ID not found",
+      });
+    }
+
+    // 11. Prepare payment document
+    const payment = {
+      bookingId: booking._id.toString(),
+      serviceTitle: booking.serviceTitle,
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      technicianName: booking.technicianName,
+      technicianEmail: booking.technicianEmail,
+      amount: booking.finalAmount,
+      currency: "usd",
+      transactionId,
+      stripeSessionId: session.id,
+      paymentStatus: "paid",
+      paidAt: new Date(),
+    };
+
+    // 12. Insert payment and update booking safely
+    const updateResult = await bookings.updateOne(
+      {
+        _id: booking._id,
+        status: "completed",
+        paymentStatus: "unpaid",
+      },
+      {
+        $set: { paymentStatus: "paid" },
+      }
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).send({
+        success: false,
+        message: "Booking is already paid or cannot be paid",
+      });
+    }
+
+    try {
+      await payments.insertOne(payment);
+    } catch (error) {
+      // Roll back booking status if payment insert fails
+      await bookings.updateOne(
+        {
+          _id: booking._id,
+          paymentStatus: "paid",
+        },
+        {
+          $set: { paymentStatus: "unpaid" },
+        }
+      );
+
+      throw error;
+    }
+
+    // 13. Send successful response
+    res.status(200).send({
+      success: true,
+      message: "Payment verified successfully",
+      payment,
+    });
+  } catch (error) {
+    console.error("Payment verification error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to verify payment",
+    });
+  }
+});
 
 app.get("/", (req, res) => {
   res.send("serving.....asignment9");
