@@ -24,7 +24,6 @@ const db = mongoclient.db("Assignment-9ph");
 const user = db.collection("user");
 const services = db.collection("services");
 
-
 //service related api
 // app.post("/services", async (req, res) => {
 //   const service = req.body;
@@ -80,19 +79,21 @@ app.get("/services", async (req, res) => {
 
       // Search services according to user role
       if (users.role === "technician") {
-        query = { technicianId: id };
+        // query = { technicianId: id };
+        query = {
+          $or: [{ technicianId: id }, { technicianEmail: users.email }],
+        };
       } else if (users.role === "admin") {
         query = {};
       } else {
-        query = { approvalStatus: "approved" };
+        query = { approvalStatus: "approved", isAvailable: true };
       }
     } else {
       // Public users can see approved services
-      query = { approvalStatus: "approved" };
+      query = { approvalStatus: "approved", isAvailable: true };
     }
 
     const result = await services.find(query).sort({ createdAt: -1 }).toArray();
-    
 
     res.status(200).send({
       success: true,
@@ -108,8 +109,60 @@ app.get("/services", async (req, res) => {
     });
   }
 });
+//service detail page public 
+app.get("/services/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
-//editing any service both for technitian and admin 
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid service ID",
+      });
+    }
+
+    const result = await services.findOne({
+      _id: new ObjectId(id),
+      approvalStatus: "approved",
+      isAvailable: true,
+    });
+
+    if (!result) {
+      return res.status(404).send({
+        success: false,
+        message: "Service not found or unavailable",
+      });
+    }
+
+    const technician = await user.findOne(
+      { email: result.technicianEmail },
+      {
+        projection: {
+          name: 1,
+          email: 1,
+          image: 1,
+          area: 1,
+          bio: 1,
+        },
+      }
+    );
+
+    res.status(200).send({
+      success: true,
+      message: "Service details fetched successfully",
+      result,
+      technician,
+    });
+  } catch (error) {
+    console.error("Get service details error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch service details",
+    });
+  }
+});
+//editing any service both for technitian and admin
 
 app.patch("/services/:id", async (req, res) => {
   try {
@@ -183,7 +236,7 @@ app.patch("/services/:id", async (req, res) => {
       });
 
       const isEditing = allowedFields.some(
-        (field) => field !== "isAvailable" && field in updateData
+        (field) => field !== "isAvailable" && field in updateData,
       );
 
       if (isEditing) {
@@ -200,7 +253,7 @@ app.patch("/services/:id", async (req, res) => {
 
     const result = await services.updateOne(
       { _id: new ObjectId(id) },
-      { $set: query }
+      { $set: query },
     );
 
     res.send({
@@ -215,6 +268,7 @@ app.patch("/services/:id", async (req, res) => {
     });
   }
 });
+
 
 //deleting service by technician
 
@@ -296,7 +350,7 @@ app.get("/users", async (req, res) => {
             role: 1,
             createdAt: 1,
           },
-        }
+        },
       )
       .sort({ createdAt: -1 })
       .toArray();
@@ -396,7 +450,7 @@ app.patch("/users/:id/role", async (req, res) => {
         $set: {
           role: role,
         },
-      }
+      },
     );
 
     res.status(200).send({
@@ -412,7 +466,6 @@ app.patch("/users/:id/role", async (req, res) => {
     });
   }
 });
-
 
 app.get("/", (req, res) => {
   res.send("serving.....asignment9");
