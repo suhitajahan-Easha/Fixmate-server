@@ -57,6 +57,40 @@ const verifyjwttoken = async (req, res, next) => {
   }
   next();
 };
+
+const verifyCustomer = (req, res, next) => {
+  if (req.user.role !== "customer") {
+    return res.status(403).send({ msg: "Forbidden! Customer access only." });
+  }
+  next();
+};
+
+const verifyTechnician = (req, res, next) => {
+  if (req.user.role !== "technician") {
+    return res.status(403).send({ msg: "Forbidden! Technician access only." });
+  }
+  next();
+};
+
+const verifyAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).send({ msg: "Forbidden! Admin access only." });
+  }
+  next();
+};
+const verifyRole = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).send({ msg: "Forbidden!" });
+    }
+    next();
+  };
+};
+
+
+
+
+
 app.post("/services", async (req, res) => {
   try {
     const service = req.body;
@@ -556,7 +590,7 @@ app.delete("/services/:id", async (req, res) => {
 });
 
 ///admin seeing all user api and edit api
-app.get("/users",verifyjwttoken, async (req, res) => {
+app.get("/users",verifyjwttoken,verifyAdmin, async (req, res) => {
   try {
     const result = await user
       .find(
@@ -591,7 +625,7 @@ app.get("/users",verifyjwttoken, async (req, res) => {
 
 //api for making other admin
 
-app.patch("/users/:id/role",verifyjwttoken, async (req, res) => {
+app.patch("/users/:id/role",verifyjwttoken,verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, role } = req.body;
@@ -687,7 +721,7 @@ app.patch("/users/:id/role",verifyjwttoken, async (req, res) => {
 });
 
 // Create a repair booking
-app.post("/bookings", async (req, res) => {
+app.post("/bookings",verifyjwttoken,verifyCustomer, async (req, res) => {
   try {
     const {
       customerId,
@@ -842,7 +876,7 @@ app.post("/bookings", async (req, res) => {
 
 ///getting booking api
 
-app.get("/bookings", verifyjwttoken, async (req, res) => {
+app.get("/bookings", verifyjwttoken,verifyRole("customer", "technician", "admin"), async (req, res) => {
   try {
     const { userId } = req.query;
 
@@ -911,7 +945,7 @@ app.get("/bookings", verifyjwttoken, async (req, res) => {
 //booking edit api technician and customer
 
 // PATCH: Update booking status (Customer and Technician)
-app.patch("/bookings/:id/status", async (req, res) => {
+app.patch("/bookings/:id/status",verifyjwttoken,verifyRole("customer", "technician"), async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, status, finalAmount } = req.body;
@@ -1096,7 +1130,7 @@ app.patch("/bookings/:id/status", async (req, res) => {
 
 ///payment api
 
-app.post("/payments/create-checkout-session", async (req, res) => {
+app.post("/payments/create-checkout-session",verifyjwttoken,verifyCustomer, async (req, res) => {
   try {
     const { bookingId, customerEmail } = req.body;
 
@@ -1397,7 +1431,7 @@ app.post("/payments/verify", async (req, res) => {
 // for admin stats
 
 
-app.get("/admin/dashboard-stats",verifyjwttoken, async (req, res) => {
+app.get("/admin/dashboard-stats",verifyjwttoken,verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.query;
 
@@ -1478,7 +1512,7 @@ app.get("/admin/dashboard-stats",verifyjwttoken, async (req, res) => {
 ///payemnt api for admin and customer
 
 // GET payments for customer or all payments for admin
-app.get("/payments",verifyjwttoken, async (req, res) => {
+app.get("/payments",verifyjwttoken,verifyRole("customer", "admin"), async (req, res) => {
   try {
     const { userId } = req.query;
 
