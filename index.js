@@ -3,6 +3,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import "dotenv/config";
 import cors from "cors";
 import Stripe from "stripe";
+import { createRemoteJWKSet, jwtVerify,  } from "jose";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -31,12 +32,31 @@ const payments = db.collection("payments");
 
 await payments.createIndex({ stripeSessionId: 1 }, { unique: true });
 
-//service related api
-// app.post("/services", async (req, res) => {
-//   const service = req.body;
-//   const result = await services.insertOne(service);
-//   res.send(result);
-// });
+//jwt verify 
+const verifyjwttoken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  // console.log(authHeader);
+  if (!authHeader|| !authHeader.startsWith("Bearer ")) {
+    return res.status(401).send({ msg: "Unauthorized!" });
+  }
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).send({ msg: "Unauthorized!" });
+  }
+  console.log(token);
+  const JWKS = createRemoteJWKSet(
+    new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+  );
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+    req.user = payload;
+    console.log("hi",req.user);
+  } catch (error) {
+    console.error("JWT verification error:", error.message);
+    return res.status(401).send({ msg: "Invalid or expired token!" });
+  }
+  next();
+};
 app.post("/services", async (req, res) => {
   try {
     const service = req.body;
@@ -364,7 +384,7 @@ app.get("/services/:id", async (req, res) => {
 });
 //editing any service both for technitian and admin
 
-app.patch("/services/:id", async (req, res) => {
+app.patch("/services/:id",verifyjwttoken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, ...updateData } = req.body;
@@ -536,7 +556,7 @@ app.delete("/services/:id", async (req, res) => {
 });
 
 ///admin seeing all user api and edit api
-app.get("/users", async (req, res) => {
+app.get("/users",verifyjwttoken, async (req, res) => {
   try {
     const result = await user
       .find(
@@ -571,7 +591,7 @@ app.get("/users", async (req, res) => {
 
 //api for making other admin
 
-app.patch("/users/:id/role", async (req, res) => {
+app.patch("/users/:id/role",verifyjwttoken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, role } = req.body;
@@ -822,7 +842,7 @@ app.post("/bookings", async (req, res) => {
 
 ///getting booking api
 
-app.get("/bookings", async (req, res) => {
+app.get("/bookings", verifyjwttoken, async (req, res) => {
   try {
     const { userId } = req.query;
 
@@ -1377,7 +1397,7 @@ app.post("/payments/verify", async (req, res) => {
 // for admin stats
 
 
-app.get("/admin/dashboard-stats", async (req, res) => {
+app.get("/admin/dashboard-stats",verifyjwttoken, async (req, res) => {
   try {
     const { userId } = req.query;
 
@@ -1452,6 +1472,74 @@ app.get("/admin/dashboard-stats", async (req, res) => {
     res.status(500).send({
       success: false,
       message: "Failed to load dashboard statistics",
+    });
+  }
+});
+///payemnt api for admin and customer
+
+// GET payments for customer or all payments for admin
+app.get("/payments",verifyjwttoken, async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(400).send({
+        success: false,
+        message: "Valid user ID is required",
+      });
+    }
+
+    // Find the logged-in user
+    const currentUser = await user.findOne({
+      _id: new ObjectId(userId),
+    });
+
+    if (!currentUser) {
+      return res.status(404).send({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    let query = {};
+
+    // Customer can see only their own payments
+    if (currentUser.role === "customer") {
+      query = { customerEmail: currentUser.email };
+    }
+    // Admin can see every payment
+    else if (currentUser.role === "admin") {
+      query = {};
+    } else {
+      return res.status(403).send({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    const result = await payments
+      .find(query)
+      .sort({ paidAt: -1 })
+      .toArray();
+
+    // Calculate revenue from the returned payment records
+    const totalRevenue = result.reduce(
+      (total, payment) => total + Number(payment.amount || 0),
+      0
+    );
+
+    res.status(200).send({
+      success: true,
+      message: "Payments fetched successfully",
+      totalRevenue,
+      result,
+    });
+  } catch (error) {
+    console.error("Get payments error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch payments",
     });
   }
 });
