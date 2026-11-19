@@ -117,21 +117,106 @@ app.post("/services", async (req, res) => {
 //     });
 //   }
 // });
+//latest before sorting for filter service page
+// app.get("/services", async (req, res) => {
+//   try {
+//     const { id, category, limit } = req.query;
+
+//     let query = {};
+
+//     if (id) {
+//       // Find user by ID
+//       const users = await user.findOne({
+//         _id: new ObjectId(id),
+//       });
+
+//       console.log("Received ID:", id);
+//       console.log("Found user:", users);
+
+//       if (!users) {
+//         return res.status(404).send({
+//           success: false,
+//           message: "User not found",
+//         });
+//       }
+
+//       // Search services according to user role
+//       if (users.role === "technician") {
+//         query = {
+//           $or: [{ technicianId: id }, { technicianEmail: users.email }],
+//         };
+//       } else if (users.role === "admin") {
+//         query = {};
+//       } else {
+//         query = {
+//           approvalStatus: "approved",
+//           isAvailable: true,
+//         };
+//       }
+//     } else {
+//       // Public users can see approved services
+//       query = {
+//         approvalStatus: "approved",
+//         isAvailable: true,
+//       };
+//     }
+
+//     // Apply category filter only for public/customer queries
+//     if (
+//       !id ||
+//       (id &&
+//         (await user.findOne({ _id: new ObjectId(id) }))?.role === "customer")
+//     ) {
+//       if (category) {
+//         query.category = category;
+//       }
+//     }
+
+//     // Get services
+//     let servicesQuery = services.find(query).sort({ createdAt: -1 });
+
+//     if (limit && Number(limit) > 0) {
+//       servicesQuery = servicesQuery.limit(Number(limit));
+//     }
+
+//     const result = await servicesQuery.toArray();
+
+//     res.status(200).send({
+//       success: true,
+//       message: "Services fetched successfully",
+//       result,
+//     });
+//   } catch (error) {
+//     console.error("Get services error:", error);
+
+//     res.status(500).send({
+//       success: false,
+//       message: "Failed to fetch services",
+//     });
+//   }
+// });
+
+//after adding filter sorting 
 
 app.get("/services", async (req, res) => {
   try {
-    const { id, category, limit } = req.query;
+    const { id, category, limit, search, mode, sort } = req.query;
 
     let query = {};
+    let role = "public";
 
+    // 1. Check user role
     if (id) {
-      // Find user by ID
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid user ID",
+        });
+      }
+
       const users = await user.findOne({
         _id: new ObjectId(id),
       });
-
-      console.log("Received ID:", id);
-      console.log("Found user:", users);
 
       if (!users) {
         return res.status(404).send({
@@ -140,12 +225,16 @@ app.get("/services", async (req, res) => {
         });
       }
 
-      // Search services according to user role
-      if (users.role === "technician") {
+      role = users.role;
+
+      if (role === "technician") {
         query = {
-          $or: [{ technicianId: id }, { technicianEmail: users.email }],
+          $or: [
+            { technicianId: id },
+            { technicianEmail: users.email },
+          ],
         };
-      } else if (users.role === "admin") {
+      } else if (role === "admin") {
         query = {};
       } else {
         query = {
@@ -154,27 +243,50 @@ app.get("/services", async (req, res) => {
         };
       }
     } else {
-      // Public users can see approved services
+      // Public users can see approved and available services
       query = {
         approvalStatus: "approved",
         isAvailable: true,
       };
     }
 
-    // Apply category filter only for public/customer queries
-    if (
-      !id ||
-      (id &&
-        (await user.findOne({ _id: new ObjectId(id) }))?.role === "customer")
-    ) {
+    // 2. Apply search and filters only to public/customer services
+    if (role === "public" || role === "customer") {
       if (category) {
         query.category = category;
       }
+
+      if (mode) {
+        query.serviceMode = mode;
+      }
+
+      if (search && search.trim()) {
+        const searchText = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        query.$or = [
+          { title: { $regex: searchText, $options: "i" } },
+          { category: { $regex: searchText, $options: "i" } },
+        ];
+      }
     }
 
-    // Get services
-    let servicesQuery = services.find(query).sort({ createdAt: -1 });
+    // 3. Sort services
+    let sortOption = { createdAt: -1 };
 
+    if (role === "public" || role === "customer") {
+      if (sort === "price-low") {
+        sortOption = { basePrice: 1 };
+      } else if (sort === "price-high") {
+        sortOption = { basePrice: -1 };
+      } else {
+        sortOption = { createdAt: -1 };
+      }
+    }
+
+    // 4. Fetch services
+    let servicesQuery = services.find(query).sort(sortOption);
+
+    // Keep existing limit functionality for Featured Services
     if (limit && Number(limit) > 0) {
       servicesQuery = servicesQuery.limit(Number(limit));
     }
@@ -195,6 +307,7 @@ app.get("/services", async (req, res) => {
     });
   }
 });
+
 
 //service detail page public
 app.get("/services/:id", async (req, res) => {
