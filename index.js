@@ -91,7 +91,7 @@ const verifyRole = (...roles) => {
 
 
 
-app.post("/services", async (req, res) => {
+app.post("/services",verifyjwttoken,verifyTechnician, async (req, res) => {
   try {
     const service = req.body;
 
@@ -418,7 +418,7 @@ app.get("/services/:id", async (req, res) => {
 });
 //editing any service both for technitian and admin
 
-app.patch("/services/:id",verifyjwttoken, async (req, res) => {
+app.patch("/services/:id",verifyjwttoken,verifyRole("technician", "admin"), async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, ...updateData } = req.body;
@@ -457,6 +457,7 @@ app.patch("/services/:id",verifyjwttoken, async (req, res) => {
 
       query = { approvalStatus: updateData.approvalStatus };
     } else if (users.role === "technician") {
+      
       if (service.technicianId !== userId) {
         return res.status(403).send({
           success: false,
@@ -525,7 +526,7 @@ app.patch("/services/:id",verifyjwttoken, async (req, res) => {
 
 //deleting service by technician
 
-app.delete("/services/:id", async (req, res) => {
+app.delete("/services/:id",verifyjwttoken,verifyTechnician, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId } = req.body;
