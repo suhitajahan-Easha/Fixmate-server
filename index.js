@@ -1373,6 +1373,90 @@ app.post("/payments/verify", async (req, res) => {
   }
 });
 
+
+// for admin stats
+
+
+app.get("/admin/dashboard-stats", async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId || !ObjectId.isValid(userId)) {
+      return res.status(400).send({
+        success: false,
+        message: "Valid user ID is required",
+      });
+    }
+
+    const admin = await user.findOne({
+      _id: new ObjectId(userId),
+    });
+
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).send({
+        success: false,
+        message: "Admin access required",
+      });
+    }
+
+    const [
+      totalUsers,
+      totalTechnicians,
+      pendingServices,
+      recentUsers,
+      recentPendingServices,
+    ] = await Promise.all([
+      user.countDocuments({}),
+      user.countDocuments({ role: "technician" }),
+      services.countDocuments({ approvalStatus: "pending" }),
+
+      user.find(
+        {},
+        {
+          projection: {
+            name: 1,
+            email: 1,
+            role: 1,
+            createdAt: 1,
+            image: 1,
+          },
+        }
+      ).sort({ createdAt: -1 }).limit(5).toArray(),
+
+      services.find(
+        { approvalStatus: "pending" },
+        {
+          projection: {
+            title: 1,
+            category: 1,
+            technicianName: 1,
+            createdAt: 1,
+          },
+        }
+      ).sort({ createdAt: -1 }).limit(5).toArray(),
+    ]);
+
+    res.status(200).send({
+      success: true,
+      result: {
+        totalUsers,
+        totalTechnicians,
+        pendingServices,
+        recentUsers,
+        recentPendingServices,
+      },
+    });
+  } catch (error) {
+    console.error("Admin dashboard error:", error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load dashboard statistics",
+    });
+  }
+});
+
+
 app.get("/", (req, res) => {
   res.send("serving.....asignment9");
 });
