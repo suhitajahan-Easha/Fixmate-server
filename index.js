@@ -9,7 +9,12 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = 5000;
-app.use(cors());
+// app.use(cors());
+app.use(cors({
+  origin: "https://fixmate-client-suhitajahan-easha.vercel.app",
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGODB_URI);
