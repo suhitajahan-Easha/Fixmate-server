@@ -3,7 +3,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import "dotenv/config";
 import cors from "cors";
 import Stripe from "stripe";
-import { createRemoteJWKSet, jwtVerify,  } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -33,11 +33,11 @@ const payments = db.collection("payments");
 
 await payments.createIndex({ stripeSessionId: 1 }, { unique: true });
 
-//jwt verify 
+//jwt verify
 const verifyjwttoken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   // console.log(authHeader);
-  if (!authHeader|| !authHeader.startsWith("Bearer ")) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).send({ msg: "Unauthorized!" });
   }
   const token = authHeader.split(" ")[1];
@@ -47,12 +47,12 @@ const verifyjwttoken = async (req, res, next) => {
   console.log(token);
   console.log("JWKS URL:", `${process.env.CLIENT_URL}/api/auth/jwks`);
   const JWKS = createRemoteJWKSet(
-    new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+    new URL(`${process.env.CLIENT_URL}/api/auth/jwks`),
   );
   try {
     const { payload } = await jwtVerify(token, JWKS);
     req.user = payload;
-    console.log("hi",req.user);
+    console.log("hi", req.user);
   } catch (error) {
     console.error("JWT verification error:", error.message);
     return res.status(401).send({ msg: "Invalid or expired token!" });
@@ -89,11 +89,7 @@ const verifyRole = (...roles) => {
   };
 };
 
-
-
-
-
-app.post("/services",verifyjwttoken,verifyTechnician, async (req, res) => {
+app.post("/services", verifyjwttoken, verifyTechnician, async (req, res) => {
   try {
     const service = req.body;
 
@@ -252,7 +248,7 @@ app.post("/services",verifyjwttoken,verifyTechnician, async (req, res) => {
 //   }
 // });
 
-//after adding filter sorting 
+//after adding filter sorting
 
 app.get("/services", async (req, res) => {
   try {
@@ -285,10 +281,7 @@ app.get("/services", async (req, res) => {
 
       if (role === "technician") {
         query = {
-          $or: [
-            { technicianId: id },
-            { technicianEmail: users.email },
-          ],
+          $or: [{ technicianId: id }, { technicianEmail: users.email }],
         };
       } else if (role === "admin") {
         query = {};
@@ -364,7 +357,6 @@ app.get("/services", async (req, res) => {
   }
 });
 
-
 //service detail page public
 app.get("/services/:id", async (req, res) => {
   try {
@@ -420,180 +412,189 @@ app.get("/services/:id", async (req, res) => {
 });
 //editing any service both for technitian and admin
 
-app.patch("/services/:id",verifyjwttoken,verifyRole("technician", "admin"), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId, ...updateData } = req.body;
+app.patch(
+  "/services/:id",
+  verifyjwttoken,
+  verifyRole("technician", "admin"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId, ...updateData } = req.body;
 
-    let query = {};
+      let query = {};
 
-    const users = await user.findOne({
-      _id: new ObjectId(userId),
-    });
-
-    if (!users) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
+      const users = await user.findOne({
+        _id: new ObjectId(userId),
       });
-    }
 
-    const service = await services.findOne({
-      _id: new ObjectId(id),
-    });
+      if (!users) {
+        return res.status(404).send({
+          success: false,
+          message: "User not found",
+        });
+      }
 
-    if (!service) {
-      return res.status(404).send({
-        success: false,
-        message: "Service not found",
+      const service = await services.findOne({
+        _id: new ObjectId(id),
       });
-    }
 
-    if (users.role === "admin") {
-      if (!["approved", "rejected"].includes(updateData.approvalStatus)) {
-        return res.status(400).send({
+      if (!service) {
+        return res.status(404).send({
           success: false,
-          message: "Invalid approval status",
+          message: "Service not found",
         });
       }
 
-      query = { approvalStatus: updateData.approvalStatus };
-    } else if (users.role === "technician") {
-      
-      if (service.technicianId !== userId) {
-        return res.status(403).send({
-          success: false,
-          message: "You cannot update this service",
-        });
-      }
-
-      if ("approvalStatus" in updateData) {
-        return res.status(403).send({
-          success: false,
-          message: "Technicians cannot change approval status",
-        });
-      }
-
-      const allowedFields = [
-        "title",
-        "category",
-        "description",
-        "image",
-        "basePrice",
-        "estimatedDuration",
-        "serviceMode",
-        "serviceArea",
-        "isAvailable",
-      ];
-
-      allowedFields.forEach((field) => {
-        if (field in updateData) {
-          query[field] = updateData[field];
+      if (users.role === "admin") {
+        if (!["approved", "rejected"].includes(updateData.approvalStatus)) {
+          return res.status(400).send({
+            success: false,
+            message: "Invalid approval status",
+          });
         }
-      });
 
-      const isEditing = allowedFields.some(
-        (field) => field !== "isAvailable" && field in updateData,
+        query = { approvalStatus: updateData.approvalStatus };
+      } else if (users.role === "technician") {
+        if (service.technicianId !== userId) {
+          return res.status(403).send({
+            success: false,
+            message: "You cannot update this service",
+          });
+        }
+
+        if ("approvalStatus" in updateData) {
+          return res.status(403).send({
+            success: false,
+            message: "Technicians cannot change approval status",
+          });
+        }
+
+        const allowedFields = [
+          "title",
+          "category",
+          "description",
+          "image",
+          "basePrice",
+          "estimatedDuration",
+          "serviceMode",
+          "serviceArea",
+          "isAvailable",
+        ];
+
+        allowedFields.forEach((field) => {
+          if (field in updateData) {
+            query[field] = updateData[field];
+          }
+        });
+
+        const isEditing = allowedFields.some(
+          (field) => field !== "isAvailable" && field in updateData,
+        );
+
+        if (isEditing) {
+          query.approvalStatus = "pending";
+        }
+      } else {
+        return res.status(403).send({
+          success: false,
+          message: "You are not allowed to update services",
+        });
+      }
+
+      query.updatedAt = new Date();
+
+      const result = await services.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: query },
       );
 
-      if (isEditing) {
-        query.approvalStatus = "pending";
-      }
-    } else {
-      return res.status(403).send({
+      res.send({
+        success: true,
+        message: "Service updated successfully",
+      });
+    } catch (error) {
+      console.error("Update service error:", error);
+      res.status(500).send({
         success: false,
-        message: "You are not allowed to update services",
+        message: "Failed to update service",
       });
     }
-
-    query.updatedAt = new Date();
-
-    const result = await services.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: query },
-    );
-
-    res.send({
-      success: true,
-      message: "Service updated successfully",
-    });
-  } catch (error) {
-    console.error("Update service error:", error);
-    res.status(500).send({
-      success: false,
-      message: "Failed to update service",
-    });
-  }
-});
+  },
+);
 
 //deleting service by technician
 
-app.delete("/services/:id",verifyjwttoken,verifyTechnician, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId } = req.body;
+app.delete(
+  "/services/:id",
+  verifyjwttoken,
+  verifyTechnician,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.body;
 
-    // Find user
-    const users = await user.findOne({
-      _id: new ObjectId(userId),
-    });
+      // Find user
+      const users = await user.findOne({
+        _id: new ObjectId(userId),
+      });
 
-    if (!users) {
-      return res.status(404).send({
+      if (!users) {
+        return res.status(404).send({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // Only technicians can delete services
+      if (users.role !== "technician") {
+        return res.status(403).send({
+          success: false,
+          message: "Only technicians can delete services",
+        });
+      }
+
+      // Find service
+      const service = await services.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!service) {
+        return res.status(404).send({
+          success: false,
+          message: "Service not found",
+        });
+      }
+
+      // Check service ownership
+      if (service.technicianId !== userId) {
+        return res.status(403).send({
+          success: false,
+          message: "You cannot delete another technician's service",
+        });
+      }
+
+      // Delete service
+      const result = await services.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send({
+        success: true,
+        message: "Service deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete service error:", error);
+
+      res.status(500).send({
         success: false,
-        message: "User not found",
+        message: "Failed to delete service",
       });
     }
-
-    // Only technicians can delete services
-    if (users.role !== "technician") {
-      return res.status(403).send({
-        success: false,
-        message: "Only technicians can delete services",
-      });
-    }
-
-    // Find service
-    const service = await services.findOne({
-      _id: new ObjectId(id),
-    });
-
-    if (!service) {
-      return res.status(404).send({
-        success: false,
-        message: "Service not found",
-      });
-    }
-
-    // Check service ownership
-    if (service.technicianId !== userId) {
-      return res.status(403).send({
-        success: false,
-        message: "You cannot delete another technician's service",
-      });
-    }
-
-    // Delete service
-    const result = await services.deleteOne({
-      _id: new ObjectId(id),
-    });
-
-    res.send({
-      success: true,
-      message: "Service deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete service error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to delete service",
-    });
-  }
-});
+  },
+);
 
 ///admin seeing all user api and edit api
-app.get("/users",verifyjwttoken,verifyAdmin, async (req, res) => {
+app.get("/users", verifyjwttoken, verifyAdmin, async (req, res) => {
   try {
     const result = await user
       .find(
@@ -628,7 +629,7 @@ app.get("/users",verifyjwttoken,verifyAdmin, async (req, res) => {
 
 //api for making other admin
 
-app.patch("/users/:id/role",verifyjwttoken,verifyAdmin, async (req, res) => {
+app.patch("/users/:id/role", verifyjwttoken, verifyAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId, role } = req.body;
@@ -724,7 +725,7 @@ app.patch("/users/:id/role",verifyjwttoken,verifyAdmin, async (req, res) => {
 });
 
 // Create a repair booking
-app.post("/bookings",verifyjwttoken,verifyCustomer, async (req, res) => {
+app.post("/bookings", verifyjwttoken, verifyCustomer, async (req, res) => {
   try {
     const {
       customerId,
@@ -879,377 +880,401 @@ app.post("/bookings",verifyjwttoken,verifyCustomer, async (req, res) => {
 
 ///getting booking api
 
-app.get("/bookings", verifyjwttoken,verifyRole("customer", "technician", "admin"), async (req, res) => {
-  try {
-    const { userId } = req.query;
+app.get(
+  "/bookings",
+  verifyjwttoken,
+  verifyRole("customer", "technician", "admin"),
+  async (req, res) => {
+    try {
+      // const { userId } = req.query;
 
-    // Check user ID
-    if (!userId || !ObjectId.isValid(userId)) {
-      return res.status(400).send({
+      // // Check user ID
+      // if (!userId || !ObjectId.isValid(userId)) {
+      //   return res.status(400).send({
+      //     success: false,
+      //     message: "Valid user ID is required",
+      //   });
+      // }
+
+      // // Find logged-in user
+      // const currentUser = await user.findOne({
+      //   _id: new ObjectId(userId),
+      // });
+      // Get logged-in user from verified JWT
+
+      const currentUser = await user.findOne({
+        _id: new ObjectId(req.user.id),
+      });
+
+      if (!currentUser) {
+        return res.status(404).send({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      let query = {};
+
+      // Customer sees their own bookings
+      if (currentUser.role === "customer") {
+        query = {
+          customerEmail: currentUser.email,
+        };
+      }
+      // Technician sees bookings for their services
+      else if (currentUser.role === "technician") {
+        query = {
+          technicianEmail: currentUser.email,
+        };
+      }
+      // Admin sees all bookings
+      else if (currentUser.role === "admin") {
+        query = {};
+      } else {
+        return res.status(403).send({
+          success: false,
+          message: "You are not allowed to view bookings",
+        });
+      }
+
+      // Get bookings
+      const result = await bookings
+        .find(query)
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.status(200).send({
+        success: true,
+        message: "Bookings fetched successfully",
+        result,
+      });
+    } catch (error) {
+      console.error("Get bookings error:", error);
+
+      res.status(500).send({
         success: false,
-        message: "Valid user ID is required",
+        message: "Failed to fetch bookings",
       });
     }
-
-    // Find logged-in user
-    const currentUser = await user.findOne({
-      _id: new ObjectId(userId),
-    });
-
-    if (!currentUser) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    let query = {};
-
-    // Customer sees their own bookings
-    if (currentUser.role === "customer") {
-      query = {
-        customerEmail: currentUser.email,
-      };
-    }
-    // Technician sees bookings for their services
-    else if (currentUser.role === "technician") {
-      query = {
-        technicianEmail: currentUser.email,
-      };
-    }
-    // Admin sees all bookings
-    else if (currentUser.role === "admin") {
-      query = {};
-    } else {
-      return res.status(403).send({
-        success: false,
-        message: "You are not allowed to view bookings",
-      });
-    }
-
-    // Get bookings
-    const result = await bookings.find(query).sort({ createdAt: -1 }).toArray();
-
-    res.status(200).send({
-      success: true,
-      message: "Bookings fetched successfully",
-      result,
-    });
-  } catch (error) {
-    console.error("Get bookings error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to fetch bookings",
-    });
-  }
-});
+  },
+);
 
 //booking edit api technician and customer
 
 // PATCH: Update booking status (Customer and Technician)
-app.patch("/bookings/:id/status",verifyjwttoken,verifyRole("customer", "technician"), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId, status, finalAmount } = req.body;
+app.patch("/bookings/:id/status",verifyjwttoken,verifyRole("customer", "technician"),async (req, res) => {
+    try {
+      const { id } = req.params;
+      // const { userId, status, finalAmount } = req.body;
+      const { status, finalAmount } = req.body;
 
-    // Validate IDs
-    if (!ObjectId.isValid(id) || !ObjectId.isValid(userId)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid booking ID or user ID",
-      });
-    }
-
-    // Validate requested status
-    const allowedStatuses = [
-      "cancelled",
-      "accepted",
-      "rejected",
-      "in-progress",
-      "completed",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid booking status",
-      });
-    }
-
-    // Find current user
-    const currentUser = await user.findOne({
-      _id: new ObjectId(userId),
-    });
-
-    if (!currentUser) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Admin cannot update bookings
-    if (currentUser.role === "admin") {
-      return res.status(403).send({
-        success: false,
-        message: "Admin cannot update bookings",
-      });
-    }
-
-    // Only customers and technicians can update bookings
-    if (!["customer", "technician"].includes(currentUser.role)) {
-      return res.status(403).send({
-        success: false,
-        message: "You are not allowed to update bookings",
-      });
-    }
-
-    // Find booking
-    const booking = await bookings.findOne({
-      _id: new ObjectId(id),
-    });
-
-    if (!booking) {
-      return res.status(404).send({
-        success: false,
-        message: "Booking not found",
-      });
-    }
-
-    let updateQuery = {};
-    let isValidTransition = false;
-
-    // Customer can only cancel their own requested booking
-    if (currentUser.role === "customer") {
-      if (booking.customerEmail !== currentUser.email) {
-        return res.status(403).send({
-          success: false,
-          message: "You can only update your own bookings",
-        });
-      }
-
-      if (booking.status === "requested" && status === "cancelled") {
-        isValidTransition = true;
-
-        updateQuery = {
-          customerEmail: currentUser.email,
-        };
-      }
-    }
-
-    // Technician can update bookings assigned to them
-    if (currentUser.role === "technician") {
-      if (booking.technicianEmail !== currentUser.email) {
-        return res.status(403).send({
-          success: false,
-          message: "You can only update bookings assigned to you",
-        });
-      }
-
-      if (
-        booking.status === "requested" &&
-        ["accepted", "rejected"].includes(status)
-      ) {
-        isValidTransition = true;
-      }
-
-      if (booking.status === "accepted" && status === "in-progress") {
-        isValidTransition = true;
-      }
-
-      if (booking.status === "in-progress" && status === "completed") {
-        isValidTransition = true;
-      }
-
-      updateQuery = {
-        technicianEmail: currentUser.email,
-      };
-    }
-
-    if (!isValidTransition) {
-      return res.status(400).send({
-        success: false,
-        message: "This booking status update is not allowed",
-      });
-    }
-
-    // Technician must provide final amount when completing a booking
-    if (status === "completed") {
-      if (
-        typeof finalAmount !== "number" ||
-        !Number.isFinite(finalAmount) ||
-        finalAmount <= 0
-      ) {
+      // Validate IDs
+      // if (!ObjectId.isValid(id) || !ObjectId.isValid(userId)) {
+      if (!ObjectId.isValid(id) || !ObjectId.isValid(req.user.id)) {
         return res.status(400).send({
           success: false,
-          message: "A valid final amount greater than zero is required",
+          message: "Invalid booking ID or user ID",
         });
       }
-    }
 
-    // Prepare update fields
-    const updateFields = {
-      status,
-      updatedAt: new Date(),
-    };
+      // Validate requested status
+      const allowedStatuses = [
+        "cancelled",
+        "accepted",
+        "rejected",
+        "in-progress",
+        "completed",
+      ];
 
-    if (status === "completed") {
-      updateFields.finalAmount = finalAmount;
-    }
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid booking status",
+        });
+      }
 
-    // Update only if the booking still has its previous status
-    const result = await bookings.updateOne(
-      {
+      // Find current user
+      // const currentUser = await user.findOne({
+      //   _id: new ObjectId(userId),
+      // });
+      const currentUser = await user.findOne({
+        _id: new ObjectId(req.user.id),
+      });
+
+      if (!currentUser) {
+        return res.status(404).send({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      // Admin cannot update bookings
+      if (currentUser.role === "admin") {
+        return res.status(403).send({
+          success: false,
+          message: "Admin cannot update bookings",
+        });
+      }
+
+      // Only customers and technicians can update bookings
+      if (!["customer", "technician"].includes(currentUser.role)) {
+        return res.status(403).send({
+          success: false,
+          message: "You are not allowed to update bookings",
+        });
+      }
+
+      // Find booking
+      const booking = await bookings.findOne({
         _id: new ObjectId(id),
-        status: booking.status,
-        ...updateQuery,
-      },
-      {
-        $set: updateFields,
-      },
-    );
+      });
 
-    if (result.matchedCount === 0) {
-      return res.status(409).send({
+      if (!booking) {
+        return res.status(404).send({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      let updateQuery = {};
+      let isValidTransition = false;
+
+      // Customer can only cancel their own requested booking
+      if (currentUser.role === "customer") {
+        if (booking.customerEmail !== currentUser.email) {
+          return res.status(403).send({
+            success: false,
+            message: "You can only update your own bookings",
+          });
+        }
+
+        if (booking.status === "requested" && status === "cancelled") {
+          isValidTransition = true;
+
+          updateQuery = {
+            customerEmail: currentUser.email,
+          };
+        }
+      }
+
+      // Technician can update bookings assigned to them
+      if (currentUser.role === "technician") {
+        if (booking.technicianEmail !== currentUser.email) {
+          return res.status(403).send({
+            success: false,
+            message: "You can only update bookings assigned to you",
+          });
+        }
+
+        if (
+          booking.status === "requested" &&
+          ["accepted", "rejected"].includes(status)
+        ) {
+          isValidTransition = true;
+        }
+
+        if (booking.status === "accepted" && status === "in-progress") {
+          isValidTransition = true;
+        }
+
+        if (booking.status === "in-progress" && status === "completed") {
+          isValidTransition = true;
+        }
+
+        updateQuery = {
+          technicianEmail: currentUser.email,
+        };
+      }
+
+      if (!isValidTransition) {
+        return res.status(400).send({
+          success: false,
+          message: "This booking status update is not allowed",
+        });
+      }
+
+      // Technician must provide final amount when completing a booking
+      if (status === "completed") {
+        if (
+          typeof finalAmount !== "number" ||
+          !Number.isFinite(finalAmount) ||
+          finalAmount <= 0
+        ) {
+          return res.status(400).send({
+            success: false,
+            message: "A valid final amount greater than zero is required",
+          });
+        }
+      }
+
+      // Prepare update fields
+      const updateFields = {
+        status,
+        updatedAt: new Date(),
+      };
+
+      if (status === "completed") {
+        updateFields.finalAmount = finalAmount;
+      }
+
+      // Update only if the booking still has its previous status
+      const result = await bookings.updateOne(
+        {
+          _id: new ObjectId(id),
+          status: booking.status,
+          ...updateQuery,
+        },
+        {
+          $set: updateFields,
+        },
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(409).send({
+          success: false,
+          message: "Booking was already updated. Please refresh and try again.",
+        });
+      }
+
+      res.status(200).send({
+        success: true,
+        message: "Booking updated successfully",
+      });
+    } catch (error) {
+      console.error("Update booking error:", error);
+
+      res.status(500).send({
         success: false,
-        message: "Booking was already updated. Please refresh and try again.",
+        message: "Failed to update booking",
       });
     }
-
-    res.status(200).send({
-      success: true,
-      message: "Booking updated successfully",
-    });
-  } catch (error) {
-    console.error("Update booking error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to update booking",
-    });
-  }
-});
+  },
+);
 
 ///payment api
 
-app.post("/payments/create-checkout-session",verifyjwttoken,verifyCustomer, async (req, res) => {
-  try {
-    const { bookingId, customerEmail } = req.body;
+app.post(
+  "/payments/create-checkout-session",
+  verifyjwttoken,
+  verifyCustomer,
+  async (req, res) => {
+    try {
+      const { bookingId, customerEmail } = req.body;
 
-    // 1. Validate required fields
-    if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
-      return res.status(400).send({
-        success: false,
-        message: "Valid booking ID and customer email are required",
+      // 1. Validate required fields
+      if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
+        return res.status(400).send({
+          success: false,
+          message: "Valid booking ID and customer email are required",
+        });
+      }
+
+      // 2. Find booking
+      const booking = await bookings.findOne({
+        _id: new ObjectId(bookingId),
       });
-    }
 
-    // 2. Find booking
-    const booking = await bookings.findOne({
-      _id: new ObjectId(bookingId),
-    });
+      if (!booking) {
+        return res.status(404).send({
+          success: false,
+          message: "Booking not found",
+        });
+      }
 
-    if (!booking) {
-      return res.status(404).send({
-        success: false,
-        message: "Booking not found",
-      });
-    }
+      // 3. Check booking ownership
+      if (booking.customerEmail !== customerEmail) {
+        return res.status(403).send({
+          success: false,
+          message: "You cannot pay for another customer's booking",
+        });
+      }
 
-    // 3. Check booking ownership
-    if (booking.customerEmail !== customerEmail) {
-      return res.status(403).send({
-        success: false,
-        message: "You cannot pay for another customer's booking",
-      });
-    }
+      // 4. Only completed bookings can be paid
+      if (booking.status !== "completed") {
+        return res.status(400).send({
+          success: false,
+          message: "Only completed bookings can be paid",
+        });
+      }
 
-    // 4. Only completed bookings can be paid
-    if (booking.status !== "completed") {
-      return res.status(400).send({
-        success: false,
-        message: "Only completed bookings can be paid",
-      });
-    }
+      // 5. Check payment status
+      if (booking.paymentStatus !== "unpaid") {
+        return res.status(400).send({
+          success: false,
+          message: "This booking is already paid",
+        });
+      }
 
-    // 5. Check payment status
-    if (booking.paymentStatus !== "unpaid") {
-      return res.status(400).send({
-        success: false,
-        message: "This booking is already paid",
-      });
-    }
+      // 6. Validate final amount
+      if (
+        typeof booking.finalAmount !== "number" ||
+        !Number.isFinite(booking.finalAmount) ||
+        booking.finalAmount <= 0
+      ) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid booking amount",
+        });
+      }
 
-    // 6. Validate final amount
-    if (
-      typeof booking.finalAmount !== "number" ||
-      !Number.isFinite(booking.finalAmount) ||
-      booking.finalAmount <= 0
-    ) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid booking amount",
-      });
-    }
-
-    // 7. Check whether a payment already exists
-    const existingPayment = await payments.findOne({
-      bookingId: booking._id.toString(),
-      paymentStatus: "paid",
-    });
-
-    if (existingPayment) {
-      return res.status(400).send({
-        success: false,
-        message: "This booking has already been paid",
-      });
-    }
-
-    // 8. Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: booking.serviceTitle,
-            },
-            unit_amount: Math.round(booking.finalAmount * 100),
-          },
-          quantity: 1,
-        },
-      ],
-
-      customer_email: booking.customerEmail,
-
-      metadata: {
+      // 7. Check whether a payment already exists
+      const existingPayment = await payments.findOne({
         bookingId: booking._id.toString(),
-        customerEmail: booking.customerEmail,
-      },
+        paymentStatus: "paid",
+      });
 
-      success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      if (existingPayment) {
+        return res.status(400).send({
+          success: false,
+          message: "This booking has already been paid",
+        });
+      }
 
-      cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
-    });
+      // 8. Create Stripe Checkout Session
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
 
-    // 9. Return Checkout URL
-    res.status(200).send({
-      success: true,
-      message: "Checkout session created successfully",
-      url: session.url,
-    });
-  } catch (error) {
-    console.error("Create checkout session error:", error);
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: booking.serviceTitle,
+              },
+              unit_amount: Math.round(booking.finalAmount * 100),
+            },
+            quantity: 1,
+          },
+        ],
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to create checkout session",
-    });
-  }
-});
+        customer_email: booking.customerEmail,
+
+        metadata: {
+          bookingId: booking._id.toString(),
+          customerEmail: booking.customerEmail,
+        },
+
+        success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+
+        cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+      });
+
+      // 9. Return Checkout URL
+      res.status(200).send({
+        success: true,
+        message: "Checkout session created successfully",
+        url: session.url,
+      });
+    } catch (error) {
+      console.error("Create checkout session error:", error);
+
+      res.status(500).send({
+        success: false,
+        message: "Failed to create checkout session",
+      });
+    }
+  },
+);
 
 app.post("/payments/verify", async (req, res) => {
   try {
@@ -1430,157 +1455,169 @@ app.post("/payments/verify", async (req, res) => {
   }
 });
 
-
 // for admin stats
 
+app.get(
+  "/admin/dashboard-stats",
+  verifyjwttoken,
+  verifyAdmin,
+  async (req, res) => {
+    try {
+      const { userId } = req.query;
 
-app.get("/admin/dashboard-stats",verifyjwttoken,verifyAdmin, async (req, res) => {
-  try {
-    const { userId } = req.query;
+      if (!userId || !ObjectId.isValid(userId)) {
+        return res.status(400).send({
+          success: false,
+          message: "Valid user ID is required",
+        });
+      }
 
-    if (!userId || !ObjectId.isValid(userId)) {
-      return res.status(400).send({
-        success: false,
-        message: "Valid user ID is required",
+      const admin = await user.findOne({
+        _id: new ObjectId(userId),
       });
-    }
 
-    const admin = await user.findOne({
-      _id: new ObjectId(userId),
-    });
+      if (!admin || admin.role !== "admin") {
+        return res.status(403).send({
+          success: false,
+          message: "Admin access required",
+        });
+      }
 
-    if (!admin || admin.role !== "admin") {
-      return res.status(403).send({
-        success: false,
-        message: "Admin access required",
-      });
-    }
-
-    const [
-      totalUsers,
-      totalTechnicians,
-      pendingServices,
-      recentUsers,
-      recentPendingServices,
-    ] = await Promise.all([
-      user.countDocuments({}),
-      user.countDocuments({ role: "technician" }),
-      services.countDocuments({ approvalStatus: "pending" }),
-
-      user.find(
-        {},
-        {
-          projection: {
-            name: 1,
-            email: 1,
-            role: 1,
-            createdAt: 1,
-            image: 1,
-          },
-        }
-      ).sort({ createdAt: -1 }).limit(5).toArray(),
-
-      services.find(
-        { approvalStatus: "pending" },
-        {
-          projection: {
-            title: 1,
-            category: 1,
-            technicianName: 1,
-            createdAt: 1,
-          },
-        }
-      ).sort({ createdAt: -1 }).limit(5).toArray(),
-    ]);
-
-    res.status(200).send({
-      success: true,
-      result: {
+      const [
         totalUsers,
         totalTechnicians,
         pendingServices,
         recentUsers,
         recentPendingServices,
-      },
-    });
-  } catch (error) {
-    console.error("Admin dashboard error:", error);
+      ] = await Promise.all([
+        user.countDocuments({}),
+        user.countDocuments({ role: "technician" }),
+        services.countDocuments({ approvalStatus: "pending" }),
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to load dashboard statistics",
-    });
-  }
-});
+        user
+          .find(
+            {},
+            {
+              projection: {
+                name: 1,
+                email: 1,
+                role: 1,
+                createdAt: 1,
+                image: 1,
+              },
+            },
+          )
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .toArray(),
+
+        services
+          .find(
+            { approvalStatus: "pending" },
+            {
+              projection: {
+                title: 1,
+                category: 1,
+                technicianName: 1,
+                createdAt: 1,
+              },
+            },
+          )
+          .sort({ createdAt: -1 })
+          .limit(5)
+          .toArray(),
+      ]);
+
+      res.status(200).send({
+        success: true,
+        result: {
+          totalUsers,
+          totalTechnicians,
+          pendingServices,
+          recentUsers,
+          recentPendingServices,
+        },
+      });
+    } catch (error) {
+      console.error("Admin dashboard error:", error);
+
+      res.status(500).send({
+        success: false,
+        message: "Failed to load dashboard statistics",
+      });
+    }
+  },
+);
 ///payemnt api for admin and customer
 
 // GET payments for customer or all payments for admin
-app.get("/payments",verifyjwttoken,verifyRole("customer", "admin"), async (req, res) => {
-  try {
-    const { userId } = req.query;
+app.get(
+  "/payments",
+  verifyjwttoken,
+  verifyRole("customer", "admin"),
+  async (req, res) => {
+    try {
+      const { userId } = req.query;
 
-    if (!userId || !ObjectId.isValid(userId)) {
-      return res.status(400).send({
+      if (!userId || !ObjectId.isValid(userId)) {
+        return res.status(400).send({
+          success: false,
+          message: "Valid user ID is required",
+        });
+      }
+
+      // Find the logged-in user
+      const currentUser = await user.findOne({
+        _id: new ObjectId(userId),
+      });
+
+      if (!currentUser) {
+        return res.status(404).send({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      let query = {};
+
+      // Customer can see only their own payments
+      if (currentUser.role === "customer") {
+        query = { customerEmail: currentUser.email };
+      }
+      // Admin can see every payment
+      else if (currentUser.role === "admin") {
+        query = {};
+      } else {
+        return res.status(403).send({
+          success: false,
+          message: "Access denied",
+        });
+      }
+
+      const result = await payments.find(query).sort({ paidAt: -1 }).toArray();
+
+      // Calculate revenue from the returned payment records
+      const totalRevenue = result.reduce(
+        (total, payment) => total + Number(payment.amount || 0),
+        0,
+      );
+
+      res.status(200).send({
+        success: true,
+        message: "Payments fetched successfully",
+        totalRevenue,
+        result,
+      });
+    } catch (error) {
+      console.error("Get payments error:", error);
+
+      res.status(500).send({
         success: false,
-        message: "Valid user ID is required",
+        message: "Failed to fetch payments",
       });
     }
-
-    // Find the logged-in user
-    const currentUser = await user.findOne({
-      _id: new ObjectId(userId),
-    });
-
-    if (!currentUser) {
-      return res.status(404).send({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    let query = {};
-
-    // Customer can see only their own payments
-    if (currentUser.role === "customer") {
-      query = { customerEmail: currentUser.email };
-    }
-    // Admin can see every payment
-    else if (currentUser.role === "admin") {
-      query = {};
-    } else {
-      return res.status(403).send({
-        success: false,
-        message: "Access denied",
-      });
-    }
-
-    const result = await payments
-      .find(query)
-      .sort({ paidAt: -1 })
-      .toArray();
-
-    // Calculate revenue from the returned payment records
-    const totalRevenue = result.reduce(
-      (total, payment) => total + Number(payment.amount || 0),
-      0
-    );
-
-    res.status(200).send({
-      success: true,
-      message: "Payments fetched successfully",
-      totalRevenue,
-      result,
-    });
-  } catch (error) {
-    console.error("Get payments error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to fetch payments",
-    });
-  }
-});
-
+  },
+);
 
 app.get("/", (req, res) => {
   res.send("serving.....asignment9");
