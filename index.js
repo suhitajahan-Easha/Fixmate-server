@@ -13,16 +13,18 @@ app.use(cors());
 
 app.use(express.json());
 
-const client = new MongoClient(process.env.MONGODB_URI);
+// const client = new MongoClient(process.env.MONGODB_URI);
+const client = new MongoClient(process.env.MONGODB_URI, {
+  maxPoolSize: 10,
+  minPoolSize: 0,
+  maxIdleTimeMS: 10000,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 20000,
+});
+
+attachDatabasePool(client);
 
 export async function connectToMongoDB() {
-  // try {
-  //   await client.connect();
-  //   console.log("You successfully connected to MongoDB!");
-  //   return client;
-  // } catch (err) {
-  //   console.dir(err);
-  // }
   try {
     await client.connect();
     console.log("You successfully connected to MongoDB!");
