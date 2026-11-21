@@ -18,11 +18,9 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   maxPoolSize: 10,
   minPoolSize: 0,
   maxIdleTimeMS: 10000,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 20000,
+  serverSelectionTimeoutMS: 15000, // Give cold starts 15s to connect
 });
 
-attachDatabasePool(client);
 
 export async function connectToMongoDB() {
   try {
