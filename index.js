@@ -16,16 +16,25 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 
 export async function connectToMongoDB() {
+  // try {
+  //   await client.connect();
+  //   console.log("You successfully connected to MongoDB!");
+  //   return client;
+  // } catch (err) {
+  //   console.dir(err);
+  // }
   try {
     await client.connect();
     console.log("You successfully connected to MongoDB!");
     return client;
   } catch (err) {
-    console.dir(err);
+    console.error("MongoDB connection failed:", err);
+    throw err;
   }
 }
 const mongoclient = await connectToMongoDB();
-const db = mongoclient.db("Assignment-9ph");
+// const db = mongoclient.db("Assignment-9ph");
+const db = mongoclient.db("Fixmate");
 const user = db.collection("user");
 const services = db.collection("services");
 const bookings = db.collection("bookings");
@@ -1899,4 +1908,5 @@ app.listen(PORT, () => {
   console.log(`server is running at ${PORT}`);
 });
 
-export default app;
+export default app;import dns from 'node:dns';
+dns.setServers(['8.8.8.8', '8.8.4.4']);
