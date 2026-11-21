@@ -250,14 +250,123 @@ app.post("/services", verifyjwttoken, verifyTechnician, async (req, res) => {
 
 //after adding filter sorting
 
+// app.get("/services", async (req, res) => {
+//   try {
+//     const { id, category, limit, search, mode, sort, type } = req.query;
+
+//     let query = {};
+//     let role = "public";
+
+//     // 1. Check user role
+//     if (id) {
+//       if (!ObjectId.isValid(id)) {
+//         return res.status(400).send({
+//           success: false,
+//           message: "Invalid user ID",
+//         });
+//       }
+
+//       const users = await user.findOne({
+//         _id: new ObjectId(id),
+//       });
+
+//       if (!users) {
+//         return res.status(404).send({
+//           success: false,
+//           message: "User not found",
+//         });
+//       }
+
+//       role = users.role;
+
+//       if (role === "technician") {
+//         query = {
+//           $or: [{ technicianId: id }, { technicianEmail: users.email }],
+//         };
+//       } else if (role === "admin") {
+//         query = {};
+//       } else {
+//         query = {
+//           approvalStatus: "approved",
+//           isAvailable: true,
+//         };
+//       }
+//     } else {
+//       // Public users can see approved and available services
+//       query = {
+//         approvalStatus: "approved",
+//         isAvailable: true,
+//       };
+//     }
+    
+   
+
+//     // 2. Apply search and filters only to public/customer services
+//     if (role === "public" || role === "customer") {
+//       if (category) {
+//         query.category = category;
+//       }
+
+//       if (mode) {
+//         query.serviceMode = mode;
+//       }
+
+//       if (search && search.trim()) {
+//         const searchText = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+//         query.$or = [
+//           { title: { $regex: searchText, $options: "i" } },
+//           { category: { $regex: searchText, $options: "i" } },
+//         ];
+//       }
+//     }
+
+//     // 3. Sort services
+//     let sortOption = { createdAt: -1 };
+
+//     if (role === "public" || role === "customer") {
+//       if (sort === "price-low") {
+//         sortOption = { basePrice: 1 };
+//       } else if (sort === "price-high") {
+//         sortOption = { basePrice: -1 };
+//       } else {
+//         sortOption = { createdAt: -1 };
+//       }
+//     }
+
+//     // 4. Fetch services
+//     let servicesQuery = services.find(query).sort(sortOption);
+
+//     // Keep existing limit functionality for Featured Services
+//     if (limit && Number(limit) > 0) {
+//       servicesQuery = servicesQuery.limit(Number(limit));
+//     }
+
+//     const result = await servicesQuery.toArray();
+
+//     res.status(200).send({
+//       success: true,
+//       message: "Services fetched successfully",
+//       result,
+//     });
+//   } catch (error) {
+//     console.error("Get services error:", error);
+
+//     res.status(500).send({
+//       success: false,
+//       message: "Failed to fetch services",
+//     });
+//   }
+// });
+
 app.get("/services", async (req, res) => {
   try {
-    const { id, category, limit, search, mode, sort } = req.query;
+    const { id, category, limit, search, mode, sort, type } = req.query;
 
     let query = {};
     let role = "public";
 
-    // 1. Check user role
+    // 1. Check user role and request type
     if (id) {
       if (!ObjectId.isValid(id)) {
         return res.status(400).send({
@@ -279,9 +388,12 @@ app.get("/services", async (req, res) => {
 
       role = users.role;
 
-      if (role === "technician") {
+      if (type === "my-services" && role === "technician") {
         query = {
-          $or: [{ technicianId: id }, { technicianEmail: users.email }],
+          $or: [
+            { technicianId: id },
+            { technicianEmail: users.email },
+          ],
         };
       } else if (role === "admin") {
         query = {};
@@ -299,7 +411,7 @@ app.get("/services", async (req, res) => {
       };
     }
 
-    // 2. Apply search and filters only to public/customer services
+    // 2. Apply category and mode filters to public/customer services
     if (role === "public" || role === "customer") {
       if (category) {
         query.category = category;
@@ -308,31 +420,33 @@ app.get("/services", async (req, res) => {
       if (mode) {
         query.serviceMode = mode;
       }
-
-      if (search && search.trim()) {
-        const searchText = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-        query.$or = [
-          { title: { $regex: searchText, $options: "i" } },
-          { category: { $regex: searchText, $options: "i" } },
-        ];
-      }
     }
 
-    // 3. Sort services
+    // 3. Apply search for all roles
+    if (search && search.trim()) {
+      const searchText = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { title: { $regex: searchText, $options: "i" } },
+            { category: { $regex: searchText, $options: "i" } },
+          ],
+        },
+      ];
+    }
+
+    // 4. Sort services
     let sortOption = { createdAt: -1 };
 
-    if (role === "public" || role === "customer") {
-      if (sort === "price-low") {
-        sortOption = { basePrice: 1 };
-      } else if (sort === "price-high") {
-        sortOption = { basePrice: -1 };
-      } else {
-        sortOption = { createdAt: -1 };
-      }
+    if (sort === "price-low") {
+      sortOption = { basePrice: 1 };
+    } else if (sort === "price-high") {
+      sortOption = { basePrice: -1 };
     }
 
-    // 4. Fetch services
+    // 5. Fetch services
     let servicesQuery = services.find(query).sort(sortOption);
 
     // Keep existing limit functionality for Featured Services
@@ -356,6 +470,7 @@ app.get("/services", async (req, res) => {
     });
   }
 });
+
 
 //service detail page public
 app.get("/services/:id", async (req, res) => {
@@ -412,25 +527,180 @@ app.get("/services/:id", async (req, res) => {
 });
 //editing any service both for technitian and admin
 
-app.patch(
-  "/services/:id",
-  verifyjwttoken,
-  verifyRole("technician", "admin"),
-  async (req, res) => {
+// app.patch(
+//   "/services/:id",
+//   verifyjwttoken,
+//   verifyRole("technician", "admin"),
+//   async (req, res) => {
+//     try {
+//       const { id } = req.params;
+//       const { userId, ...updateData } = req.body;
+
+//       let query = {};
+
+//       const users = await user.findOne({
+//         _id: new ObjectId(userId),
+//       });
+
+//       if (!users) {
+//         return res.status(404).send({
+//           success: false,
+//           message: "User not found",
+//         });
+//       }
+
+//       const service = await services.findOne({
+//         _id: new ObjectId(id),
+//       });
+
+//       if (!service) {
+//         return res.status(404).send({
+//           success: false,
+//           message: "Service not found",
+//         });
+//       }
+
+//       if (users.role === "admin") {
+//         if (!["approved", "rejected"].includes(updateData.approvalStatus)) {
+//           return res.status(400).send({
+//             success: false,
+//             message: "Invalid approval status",
+//           });
+//         }
+
+//         query = { approvalStatus: updateData.approvalStatus };
+//       } else if (users.role === "technician") {
+//         if (service.technicianId !== userId) {
+//           return res.status(403).send({
+//             success: false,
+//             message: "You cannot update this service",
+//           });
+//         }
+
+//         if ("approvalStatus" in updateData) {
+//           return res.status(403).send({
+//             success: false,
+//             message: "Technicians cannot change approval status",
+//           });
+//         }
+
+//         const allowedFields = [
+//           "title",
+//           "category",
+//           "description",
+//           "image",
+//           "basePrice",
+//           "estimatedDuration",
+//           "serviceMode",
+//           "serviceArea",
+//           "isAvailable",
+//         ];
+
+//         allowedFields.forEach((field) => {
+//           if (field in updateData) {
+//             query[field] = updateData[field];
+//           }
+//         });
+
+//         const isEditing = allowedFields.some(
+//           (field) => field !== "isAvailable" && field in updateData,
+//         );
+
+//         if (isEditing) {
+//           query.approvalStatus = "pending";
+//         }
+//       } else {
+//         return res.status(403).send({
+//           success: false,
+//           message: "You are not allowed to update services",
+//         });
+//       }
+
+//       query.updatedAt = new Date();
+
+//       const result = await services.updateOne(
+//         { _id: new ObjectId(id) },
+//         { $set: query },
+//       );
+
+//       res.send({
+//         success: true,
+//         message: "Service updated successfully",
+//       });
+//     } catch (error) {
+//       console.error("Update service error:", error);
+//       res.status(500).send({
+//         success: false,
+//         message: "Failed to update service",
+//       });
+//     }
+//   },
+// );
+//editing service approval status for admin 
+
+app.patch( "/admin/services/:id/approval",verifyjwttoken,verifyAdmin,async (req, res) => {
     try {
       const { id } = req.params;
-      const { userId, ...updateData } = req.body;
+      const { approvalStatus } = req.body;
 
-      let query = {};
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid service ID",
+        });
+      }
 
-      const users = await user.findOne({
-        _id: new ObjectId(userId),
-      });
+      if (!["approved", "rejected"].includes(approvalStatus)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid approval status",
+        });
+      }
 
-      if (!users) {
+      const result = await services.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            approvalStatus,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
         return res.status(404).send({
           success: false,
-          message: "User not found",
+          message: "Service not found",
+        });
+      }
+
+      res.send({
+        success: true,
+        message: `Service ${approvalStatus} successfully`,
+      });
+    } catch (error) {
+      console.error("Admin approval error:", error);
+
+      res.status(500).send({
+        success: false,
+        message: "Failed to update service approval",
+      });
+    }
+  }
+);
+
+//editing service for technician 
+
+app.patch("/services/:id",verifyjwttoken,verifyTechnician, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+      const technicianId = req.user.id;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid service ID",
         });
       }
 
@@ -445,67 +715,53 @@ app.patch(
         });
       }
 
-      if (users.role === "admin") {
-        if (!["approved", "rejected"].includes(updateData.approvalStatus)) {
-          return res.status(400).send({
-            success: false,
-            message: "Invalid approval status",
-          });
-        }
-
-        query = { approvalStatus: updateData.approvalStatus };
-      } else if (users.role === "technician") {
-        if (service.technicianId !== userId) {
-          return res.status(403).send({
-            success: false,
-            message: "You cannot update this service",
-          });
-        }
-
-        if ("approvalStatus" in updateData) {
-          return res.status(403).send({
-            success: false,
-            message: "Technicians cannot change approval status",
-          });
-        }
-
-        const allowedFields = [
-          "title",
-          "category",
-          "description",
-          "image",
-          "basePrice",
-          "estimatedDuration",
-          "serviceMode",
-          "serviceArea",
-          "isAvailable",
-        ];
-
-        allowedFields.forEach((field) => {
-          if (field in updateData) {
-            query[field] = updateData[field];
-          }
-        });
-
-        const isEditing = allowedFields.some(
-          (field) => field !== "isAvailable" && field in updateData,
-        );
-
-        if (isEditing) {
-          query.approvalStatus = "pending";
-        }
-      } else {
+      if (service.technicianId !== technicianId) {
         return res.status(403).send({
           success: false,
-          message: "You are not allowed to update services",
+          message: "You cannot update this service",
+        });
+      }
+
+      const allowedFields = [
+        "title",
+        "category",
+        "description",
+        "image",
+        "basePrice",
+        "estimatedDuration",
+        "serviceMode",
+        "serviceArea",
+        "isAvailable",
+      ];
+
+      const query = {};
+
+      allowedFields.forEach((field) => {
+        if (field in updateData) {
+          query[field] = updateData[field];
+        }
+      });
+
+      const isEditing = allowedFields.some(
+        (field) => field !== "isAvailable" && field in updateData
+      );
+
+      if (isEditing) {
+        query.approvalStatus = "pending";
+      }
+
+      if (Object.keys(query).length === 0) {
+        return res.status(400).send({
+          success: false,
+          message: "No valid fields provided for update",
         });
       }
 
       query.updatedAt = new Date();
 
-      const result = await services.updateOne(
+      await services.updateOne(
         { _id: new ObjectId(id) },
-        { $set: query },
+        { $set: query }
       );
 
       res.send({
@@ -513,22 +769,19 @@ app.patch(
         message: "Service updated successfully",
       });
     } catch (error) {
-      console.error("Update service error:", error);
+      console.error("Technician service update error:", error);
+
       res.status(500).send({
         success: false,
         message: "Failed to update service",
       });
     }
-  },
+  }
 );
 
 //deleting service by technician
 
-app.delete(
-  "/services/:id",
-  verifyjwttoken,
-  verifyTechnician,
-  async (req, res) => {
+app.delete( "/services/:id", verifyjwttoken,verifyTechnician, async (req, res) => {
     try {
       const { id } = req.params;
       const { userId } = req.body;
@@ -750,7 +1003,12 @@ app.post("/bookings", verifyjwttoken, verifyCustomer, async (req, res) => {
         message: "Please provide all required information",
       });
     }
-
+    if (customerId !== req.user.id) {
+      return res.status(403).send({
+        success: false,
+        message: "You cannot create a booking for another customer",
+      });
+    }
     // Check valid IDs
     if (!ObjectId.isValid(customerId) || !ObjectId.isValid(serviceId)) {
       return res.status(400).send({
@@ -880,11 +1138,7 @@ app.post("/bookings", verifyjwttoken, verifyCustomer, async (req, res) => {
 
 ///getting booking api
 
-app.get(
-  "/bookings",
-  verifyjwttoken,
-  verifyRole("customer", "technician", "admin"),
-  async (req, res) => {
+app.get( "/bookings", verifyjwttoken, verifyRole("customer", "technician", "admin"), async (req, res) => {
     try {
       // const { userId } = req.query;
 
@@ -962,7 +1216,11 @@ app.get(
 //booking edit api technician and customer
 
 // PATCH: Update booking status (Customer and Technician)
-app.patch("/bookings/:id/status",verifyjwttoken,verifyRole("customer", "technician"),async (req, res) => {
+app.patch(
+  "/bookings/:id/status",
+  verifyjwttoken,
+  verifyRole("customer", "technician"),
+  async (req, res) => {
     try {
       const { id } = req.params;
       // const { userId, status, finalAmount } = req.body;
@@ -1276,184 +1534,192 @@ app.post(
   },
 );
 
-app.post("/payments/verify", async (req, res) => {
-  try {
-    const { sessionId } = req.body;
+app.post(
+  "/payments/verify",
+  verifyjwttoken,
+  verifyCustomer,
+  async (req, res) => {
+    try {
+      const { sessionId } = req.body;
 
-    // 1. Validate session ID
-    if (!sessionId) {
-      return res.status(400).send({
-        success: false,
-        message: "Stripe session ID is required",
-      });
-    }
-
-    // 2. Retrieve Stripe Checkout Session
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-    // 3. Check payment status
-    if (session.payment_status !== "paid") {
-      return res.status(400).send({
-        success: false,
-        message: "Payment has not been completed",
-      });
-    }
-
-    // 4. Get booking information from Stripe metadata
-    const { bookingId, customerEmail } = session.metadata || {};
-
-    if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
-      return res.status(400).send({
-        success: false,
-        message: "Invalid payment metadata",
-      });
-    }
-
-    // 5. Find booking
-    const booking = await bookings.findOne({
-      _id: new ObjectId(bookingId),
-    });
-
-    if (!booking) {
-      return res.status(404).send({
-        success: false,
-        message: "Booking not found",
-      });
-    }
-
-    // 6. Verify customer and amount
-    if (
-      booking.customerEmail !== customerEmail ||
-      session.customer_email !== customerEmail ||
-      session.amount_total !== Math.round(booking.finalAmount * 100)
-    ) {
-      return res.status(400).send({
-        success: false,
-        message: "Payment information does not match booking",
-      });
-    }
-
-    // 7. Check booking status
-    if (booking.status !== "completed") {
-      return res.status(400).send({
-        success: false,
-        message: "Booking is not completed",
-      });
-    }
-
-    // 8. Check if this session was already saved
-    const existingPayment = await payments.findOne({
-      stripeSessionId: session.id,
-    });
-
-    if (existingPayment) {
-      return res.status(200).send({
-        success: true,
-        message: "Payment already verified",
-        payment: existingPayment,
-      });
-    }
-
-    // 9. Check if booking was already paid
-    if (booking.paymentStatus === "paid") {
-      return res.status(400).send({
-        success: false,
-        message: "This booking has already been paid",
-      });
-    }
-
-    // 10. Get Stripe transaction ID
-    const transactionId =
-      typeof session.payment_intent === "string"
-        ? session.payment_intent
-        : session.payment_intent?.id;
-
-    if (!transactionId) {
-      return res.status(400).send({
-        success: false,
-        message: "Stripe transaction ID not found",
-      });
-    }
-
-    // 11. Prepare payment document
-    const payment = {
-      bookingId: booking._id.toString(),
-      serviceTitle: booking.serviceTitle,
-      customerName: booking.customerName,
-      customerEmail: booking.customerEmail,
-      technicianName: booking.technicianName,
-      technicianEmail: booking.technicianEmail,
-      amount: booking.finalAmount,
-      currency: "usd",
-      transactionId,
-      stripeSessionId: session.id,
-      paymentStatus: "paid",
-      paidAt: new Date(),
-    };
-
-    // 12. Insert payment and update booking safely
-    const updateResult = await bookings.updateOne(
-      {
-        _id: booking._id,
-        status: "completed",
-        paymentStatus: "unpaid",
-      },
-      {
-        $set: { paymentStatus: "paid" },
-      },
-    );
-
-    if (updateResult.modifiedCount === 0) {
-      const savedPayment = await payments.findOne({
-        stripeSessionId: session.id,
-      });
-
-      if (savedPayment) {
-        return res.status(200).send({
-          success: true,
-          message: "Payment already verified",
-          payment: savedPayment,
+      // 1. Validate session ID
+      if (!sessionId) {
+        return res.status(400).send({
+          success: false,
+          message: "Stripe session ID is required",
         });
       }
 
-      return res.status(400).send({
-        success: false,
-        message: "Booking is already paid or cannot be paid",
-      });
-    }
+      // 2. Retrieve Stripe Checkout Session
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
 
-    try {
-      await payments.insertOne(payment);
-    } catch (error) {
-      // Roll back booking status if payment insert fails
-      await bookings.updateOne(
+      // 3. Check payment status
+      if (session.payment_status !== "paid") {
+        return res.status(400).send({
+          success: false,
+          message: "Payment has not been completed",
+        });
+      }
+
+      // 4. Get booking information from Stripe metadata
+      const { bookingId, customerEmail } = session.metadata || {};
+
+      if (!bookingId || !ObjectId.isValid(bookingId) || !customerEmail) {
+        return res.status(400).send({
+          success: false,
+          message: "Invalid payment metadata",
+        });
+      }
+
+      // 5. Find booking
+      const booking = await bookings.findOne({
+        _id: new ObjectId(bookingId),
+      });
+
+      if (!booking) {
+        return res.status(404).send({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      // 6. Verify customer and amount
+      if (
+        // booking.customerEmail !== customerEmail ||
+        // session.customer_email !== customerEmail ||
+        booking.customerEmail !== req.user.email ||
+        booking.customerEmail !== customerEmail ||
+        session.customer_email !== req.user.email ||
+        session.amount_total !== Math.round(booking.finalAmount * 100)
+      ) {
+        return res.status(400).send({
+          success: false,
+          message: "Payment information does not match booking",
+        });
+      }
+
+      // 7. Check booking status
+      if (booking.status !== "completed") {
+        return res.status(400).send({
+          success: false,
+          message: "Booking is not completed",
+        });
+      }
+
+      // 8. Check if this session was already saved
+      const existingPayment = await payments.findOne({
+        stripeSessionId: session.id,
+      });
+
+      if (existingPayment) {
+        return res.status(200).send({
+          success: true,
+          message: "Payment already verified",
+          payment: existingPayment,
+        });
+      }
+
+      // 9. Check if booking was already paid
+      if (booking.paymentStatus === "paid") {
+        return res.status(400).send({
+          success: false,
+          message: "This booking has already been paid",
+        });
+      }
+
+      // 10. Get Stripe transaction ID
+      const transactionId =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id;
+
+      if (!transactionId) {
+        return res.status(400).send({
+          success: false,
+          message: "Stripe transaction ID not found",
+        });
+      }
+
+      // 11. Prepare payment document
+      const payment = {
+        bookingId: booking._id.toString(),
+        serviceTitle: booking.serviceTitle,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        technicianName: booking.technicianName,
+        technicianEmail: booking.technicianEmail,
+        amount: booking.finalAmount,
+        currency: "usd",
+        transactionId,
+        stripeSessionId: session.id,
+        paymentStatus: "paid",
+        paidAt: new Date(),
+      };
+
+      // 12. Insert payment and update booking safely
+      const updateResult = await bookings.updateOne(
         {
           _id: booking._id,
-          paymentStatus: "paid",
+          status: "completed",
+          paymentStatus: "unpaid",
         },
         {
-          $set: { paymentStatus: "unpaid" },
+          $set: { paymentStatus: "paid" },
         },
       );
 
-      throw error;
+      if (updateResult.modifiedCount === 0) {
+        const savedPayment = await payments.findOne({
+          stripeSessionId: session.id,
+        });
+
+        if (savedPayment) {
+          return res.status(200).send({
+            success: true,
+            message: "Payment already verified",
+            payment: savedPayment,
+          });
+        }
+
+        return res.status(400).send({
+          success: false,
+          message: "Booking is already paid or cannot be paid",
+        });
+      }
+
+      try {
+        await payments.insertOne(payment);
+      } catch (error) {
+        // Roll back booking status if payment insert fails
+        await bookings.updateOne(
+          {
+            _id: booking._id,
+            paymentStatus: "paid",
+          },
+          {
+            $set: { paymentStatus: "unpaid" },
+          },
+        );
+
+        throw error;
+      }
+
+      // 13. Send successful response
+      res.status(200).send({
+        success: true,
+        message: "Payment verified successfully",
+        payment,
+      });
+    } catch (error) {
+      console.error("Payment verification error:", error);
+
+      res.status(500).send({
+        success: false,
+        message: "Failed to verify payment",
+      });
     }
-
-    // 13. Send successful response
-    res.status(200).send({
-      success: true,
-      message: "Payment verified successfully",
-      payment,
-    });
-  } catch (error) {
-    console.error("Payment verification error:", error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to verify payment",
-    });
-  }
-});
+  },
+);
 
 // for admin stats
 
@@ -1469,6 +1735,12 @@ app.get(
         return res.status(400).send({
           success: false,
           message: "Valid user ID is required",
+        });
+      }
+      if (userId !== req.user.id) {
+        return res.status(403).send({
+          success: false,
+          message: "Unauthorized access",
         });
       }
 
