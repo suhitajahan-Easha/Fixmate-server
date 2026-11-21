@@ -33,8 +33,9 @@ export async function connectToMongoDB() {
   }
 }
 const mongoclient = await connectToMongoDB();
-// const db = mongoclient.db("Assignment-9ph");
-const db = mongoclient.db("Fixmate");
+const db = mongoclient.db("Fixmate-9ph");
+// const db = mongoclient.db("Assignment-9ph");Fixmate-9ph
+// const db = mongoclient.db("Fixmate");
 const user = db.collection("user");
 const services = db.collection("services");
 const bookings = db.collection("bookings");
