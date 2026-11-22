@@ -10,16 +10,15 @@ The backend provides secure APIs for three types of users: Customers, Technician
 
 ## Live API URL
 
-**Backend:** https://fixmate-server-swart.vercel.app
+**Backend:** https://fixmate-server-zigh.vercel.app
 
-**Frontend:** https://fixmate-client-suhitajahan-easha.vercel.app
+**Frontend:** https://fixmate-client-9.vercel.app/
 
 ## Admin Credentials
 
-- **Email:** `YOUR_ADMIN_EMAIL`
-- **Password:** `YOUR_ADMIN_PASSWORD`
+- **Email:** `mahbub@gmail.com`
+- **Password:** `Mahbub200`
 
-> Replace these placeholders with your actual admin credentials if required by your assignment. Avoid publishing real production passwords in a public repository.
 
 ## Technologies Used
 
@@ -106,14 +105,13 @@ Better Auth also manages its own authentication-related collections.
 |---|---|
 | `express` | Backend API framework |
 | `mongodb` | MongoDB database integration |
-| `better-auth` | Authentication |
+  `better-auth` | Authentication |
 | `@better-auth/jwt` | Better Auth JWT plugin |
 | `jose` | JWT verification using JWKS |
 | `stripe` | Stripe payment integration |
 | `cors` | Cross-origin resource sharing |
 | `dotenv` | Environment variable management |
 
-*Check your actual `package.json` and remove packages that are not installed or used.*
 
 ## Environment Variables
 
@@ -136,7 +134,7 @@ Add any other environment variables required by your actual backend configuratio
 ### 1. Clone the Repository
 
 ```bash
-git clone YOUR_BACKEND_GITHUB_REPOSITORY_URL
+git clone https://github.com/suhitajahan-Easha/Fixmate-server
 cd your-backend-folder
 ```
 
@@ -153,20 +151,20 @@ Create a `.env` file and configure your MongoDB connection, frontend URL, Stripe
 ### 4. Run the Backend Server
 
 ```bash
-npm start
+node index.js
 ```
 
 Or, if your project uses a development script:
 
 ```bash
-npm run dev
+nodemon
 ```
 
 ## Deployment
 
 The backend is deployed on **Vercel**.
 
-Live API: https://fixmate-server-swart.vercel.app
+Live API: https://fixmate-server-zigh.vercel.app
 
 ## Developer
 
